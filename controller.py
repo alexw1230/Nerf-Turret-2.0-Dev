@@ -1,80 +1,179 @@
-from ultralytics import YOLO
+import pygame
 import cv2
+import time
+import serial
 
-# Load nano model
-model = YOLO("yolov8n.pt")
+# =============================
+# CONFIG
+# =============================
+PAN_LIMIT = 75.0
+TILT_LIMIT = 75.0
+MAX_SPEED = 180.0
+DEADZONE = 0.1
 
-# Open camera
-cap = cv2.VideoCapture(1)
+CAMERA_INDEX = 1
 
-cv2.namedWindow("Turret Vision", cv2.WINDOW_NORMAL)
-cv2.resizeWindow("Turret Vision", 1280, 720)  # any size you want
-selected_target_idx = 0
-active_target_ids = []
+SERIAL_PORT = "COM3"     # CHANGE THIS
+BAUD_RATE = 115200
 
-# Optional performance tweaks
+# Xbox mappings (Windows)
+BTN_A = 0
+AXIS_RT = 5
+TRIGGER_THRESHOLD = 0.5
+
+# =============================
+# SERIAL SEND FUNCTION
+# =============================
+def send_servo_command(ser, pan, tilt):
+    """
+    pan, tilt: -90 to +90
+    Maps to 0–180 and sends "X,Y"
+    """
+    x = int(pan + 90)
+    y = int(tilt + 90)
+    command = f"{x},{y}\n"
+    ser.write(command.encode("utf-8"))
+
+def send_relay_command(ser, state):
+    ser.write(f"{state}\n".encode("utf-8"))
+
+# =============================
+# HELPERS
+# =============================
+def apply_curve(x, expo=2):
+    return x ** expo if x >= 0 else -((-x) ** expo)
+
+# =============================
+# INIT PYGAME
+# =============================
+pygame.init()
+pygame.joystick.init()
+
+if pygame.joystick.get_count() == 0:
+    raise RuntimeError("No controller detected")
+
+joystick = pygame.joystick.Joystick(0)
+joystick.init()
+
+print(f"Controller connected: {joystick.get_name()}")
+
+# =============================
+# INIT SERIAL
+# =============================
+ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+time.sleep(2)
+print("Serial connected")
+
+# =============================
+# INIT CAMERA
+# =============================
+cap = cv2.VideoCapture(CAMERA_INDEX)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-while cap.isOpened():
+cv2.namedWindow("Turret Manual Control", cv2.WINDOW_NORMAL)
+cv2.resizeWindow("Turret Manual Control", 1280, 720)
+
+# =============================
+# STATE
+# =============================
+pan_angle = 0.0
+tilt_angle = 0.0
+
+last_time = time.time()
+prev_a = False
+firing = False
+
+# =============================
+# MAIN LOOP
+# =============================
+while True:
+    now = time.time()
+    dt = now - last_time
+    last_time = now
+
+    pygame.event.pump()
+
+    # =============================
+    # STICKS
+    # =============================
+    stick_x = joystick.get_axis(0)
+    stick_y = joystick.get_axis(1)
+
+    if abs(stick_x) < DEADZONE:
+        stick_x = 0.0
+    if abs(stick_y) < DEADZONE:
+        stick_y = 0.0
+
+    stick_y = -stick_y
+
+    stick_x = apply_curve(stick_x)
+    stick_y = apply_curve(stick_y)
+
+    pan_angle  += stick_x * MAX_SPEED * dt
+    tilt_angle += stick_y * MAX_SPEED * dt
+
+    pan_angle  = max(-PAN_LIMIT,  min(PAN_LIMIT,  pan_angle))
+    tilt_angle = max(-TILT_LIMIT, min(TILT_LIMIT, tilt_angle))
+
+    # =============================
+    # RECENTER
+    # =============================
+    a_pressed = joystick.get_button(BTN_A)
+    if a_pressed and not prev_a:
+        pan_angle = 0.0
+        tilt_angle = 0.0
+        send_servo_command(ser, pan_angle, tilt_angle)
+        print("Recentered")
+
+    prev_a = a_pressed
+
+    # =============================
+    # TRIGGER FIRE
+    # =============================
+    rt = joystick.get_axis(AXIS_RT)
+    if rt < 0:
+        rt = (rt + 1) / 2
+
+    if rt > TRIGGER_THRESHOLD and not firing:
+        firing = True
+        send_relay_command(ser, 1)
+        print("FIRE")
+
+    elif rt <= TRIGGER_THRESHOLD and firing:
+        firing = False
+        send_relay_command(ser, 0)
+        print("FIRE STOP")
+
+    # =============================
+    # SEND SERVO DATA
+    # =============================
+    send_servo_command(ser, pan_angle, tilt_angle)
+
+    # =============================
+    # CAMERA
+    # =============================
     ret, frame = cap.read()
     if not ret:
         break
 
-    # Track people only
-    results = model.track(
-        frame,
-        persist=True,
-        classes=[0],      # person only
-        conf=0.4,
-        imgsz=640,
-        verbose=False
-    )
+    cv2.putText(frame, f"Pan: {pan_angle:+.1f}",
+                (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(frame, f"Tilt: {tilt_angle:+.1f}",
+                (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-    if results[0].boxes is not None and results[0].boxes.id is not None:
-        boxes = results[0].boxes.xyxy
-        ids = results[0].boxes.id.cpu().tolist()
+    h, w = frame.shape[:2]
+    cv2.circle(frame, (w // 2, h // 2), 5, (0, 0, 255), -1)
 
-        # Update active targets list (unique + stable order)
-        active_target_ids = ids
+    cv2.imshow("Turret Manual Control", frame)
 
-        # Clamp selected index if needed
-        if selected_target_idx >= len(active_target_ids):
-            selected_target_idx = 0
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        break
 
-        selected_id = active_target_ids[selected_target_idx]
-
-        for box, track_id in zip(boxes, ids):
-            x1, y1, x2, y2 = map(int, box)
-
-            if track_id == selected_id:
-                color = (0, 0, 255)  # active target = red
-                thickness = 3
-
-                # Draw crosshair at center
-                cx = (x1 + x2) // 2
-                cy = y1 + int(0.4 * (y2 - y1))
-                cv2.circle(frame, (cx, cy), radius=5, color=(0, 0, 255), thickness=-1)
-
-            else:
-                color = (0, 255, 0)  # other targets = green
-                thickness = 2
-
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-
-
-
-    cv2.imshow("Turret Vision", frame)
-    key = cv2.waitKey(1) & 0xFF
-
-    if key == ord("n") and len(active_target_ids) > 1:
-        selected_target_idx = (selected_target_idx + 1) % len(active_target_ids)
-
-    elif key == ord("q"):
-        cap.release()
-        cv2.destroyAllWindows()
-        exit(0)
-
-
+# =============================
+# CLEANUP
+# =============================
+ser.close()
 cap.release()
 cv2.destroyAllWindows()
+pygame.quit()
