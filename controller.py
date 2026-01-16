@@ -8,31 +8,30 @@ import serial
 # =============================
 PAN_LIMIT = 75.0
 TILT_LIMIT = 75.0
-MAX_SPEED = 180.0
 DEADZONE = 0.1
+
+SPEED_SLOW = 90.0
+SPEED_MED  = 180.0
+SPEED_FAST = 270.0
 
 CAMERA_INDEX = 1
 
-SERIAL_PORT = "COM3"     # CHANGE THIS
+SERIAL_PORT = "COM3"
 BAUD_RATE = 115200
 
 # Xbox mappings (Windows)
 BTN_A = 0
 AXIS_RT = 5
 TRIGGER_THRESHOLD = 0.5
+HAT_INDEX = 0
 
 # =============================
-# SERIAL SEND FUNCTION
+# SERIAL SEND FUNCTIONS
 # =============================
 def send_servo_command(ser, pan, tilt):
-    """
-    pan, tilt: -90 to +90
-    Maps to 0–180 and sends "X,Y"
-    """
-    x = int(pan + 90)
-    y = int(tilt + 90)
-    command = f"{x},{y}\n"
-    ser.write(command.encode("utf-8"))
+    x = int(round(pan + 90))
+    y = int(round(tilt + 90))
+    ser.write(f"{x},{y}\n".encode("utf-8"))
 
 def send_relay_command(ser, state):
     ser.write(f"{state}\n".encode("utf-8"))
@@ -80,9 +79,13 @@ cv2.resizeWindow("Turret Manual Control", 1280, 720)
 pan_angle = 0.0
 tilt_angle = 0.0
 
+speed_mode = "FAST"
+MAX_SPEED = SPEED_FAST
+
 last_time = time.time()
 prev_a = False
 firing = False
+prev_hat = (0, 0)
 
 # =============================
 # MAIN LOOP
@@ -93,6 +96,24 @@ while True:
     last_time = now
 
     pygame.event.pump()
+
+    # =============================
+    # D-PAD SPEED CONTROL
+    # =============================
+    hat = joystick.get_hat(HAT_INDEX)
+
+    if hat != prev_hat:
+        if hat[1] == 1:
+            speed_mode = "FAST"
+            MAX_SPEED = SPEED_FAST
+        elif hat[1] == -1:
+            speed_mode = "SLOW"
+            MAX_SPEED = SPEED_SLOW
+        elif hat[0] == 1 or hat[0] == -1:
+            speed_mode = "MED"
+            MAX_SPEED = SPEED_MED
+
+    prev_hat = hat
 
     # =============================
     # STICKS
@@ -155,12 +176,15 @@ while True:
     # =============================
     ret, frame = cap.read()
     if not ret:
+        print("Camera read failed")
         break
 
     cv2.putText(frame, f"Pan: {pan_angle:+.1f}",
                 (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     cv2.putText(frame, f"Tilt: {tilt_angle:+.1f}",
                 (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(frame, f"Speed: {speed_mode} ({int(MAX_SPEED)} deg/s)",
+                (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
     h, w = frame.shape[:2]
     cv2.circle(frame, (w // 2, h // 2), 5, (0, 0, 255), -1)
