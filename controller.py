@@ -7,12 +7,12 @@ import serial
 # CONFIG
 # =============================
 PAN_LIMIT = 75.0
-TILT_LIMIT = 75.0
+TILT_LIMIT = 20.0
 DEADZONE = 0.1
 
-SPEED_SLOW = 90.0
-SPEED_MED  = 180.0
-SPEED_FAST = 270.0
+SPEED_SLOW = 45.0
+SPEED_MED  = 90.0
+SPEED_FAST = 180.0
 
 CAMERA_INDEX = 1
 
