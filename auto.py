@@ -19,10 +19,18 @@ print("Serial connected")
 FRAME_W = 640
 FRAME_H = 480
 CENTER_X = FRAME_W // 2
-
+CENTER_Y = FRAME_H // 2
+last_target_time = time.time()
+timeout = 3.0
+# PAN CONFIG (unchanged)
 PAN_LIMIT = 50.0
 MAX_PAN_SPEED = 270.0  # deg/sec
-PAN_ACCEL = 2000.0     # deg/sec^2, very snappy
+PAN_ACCEL = 2000.0     # deg/sec^2
+
+# TILT CONFIG (step-based)
+TILT_LIMIT = 20.0
+TILT_STEP_DIV = 50       # larger = smaller step size
+TILT_THRESHOLD = 5       # pixels before we move
 
 SERVO_SEND_INTERVAL = 0.02  # 50Hz
 last_servo_send = 0
@@ -50,15 +58,14 @@ had_active_target = False
 # SERVO STATE
 # =============================
 pan_angle = 0.0
-tilt_angle = 0.0  # locked at 0
+tilt_angle = 0.0
 pan_vel_current = 0.0
 last_time = time.time()
 
 # =============================
 # CROSSHAIR SMOOTHING
 # =============================
-smoothing_factor = 0.3  # more responsive
-# BEFORE MAIN LOOP
+smoothing_factor = 0.3  # initial for warm-up
 smoothed_cx = None
 smoothed_cy = None
 
@@ -67,7 +74,8 @@ for _ in range(3):
     ret, frame = cap.read()
     if ret:
         _ = model.track(frame, persist=True, classes=[0], conf=0.4, imgsz=416, verbose=False)
-smoothing_factor = 0.7
+smoothing_factor = 0.7  # normal operation
+
 # =============================
 # HELPERS
 # =============================
@@ -76,7 +84,7 @@ def send_servo_command(pan, tilt):
     y = int(round(tilt + 90))
     ser.write(f"{x},{y}\n".encode("utf-8"))
 
-def response_curve(x, expo=1.3):
+def response_curve(x, expo=1.5):
     return x ** expo if x >= 0 else -((-x) ** expo)
 
 # =============================
@@ -124,25 +132,28 @@ while cap.isOpened():
                 # SMOOTHING
                 # =============================
                 cx = (x1 + x2) // 2
+                target_y = y1 + int(0.33 * (y2 - y1))  # 2/3 up the box
 
                 if smoothed_cx is None:
                     smoothed_cx = cx
                 else:
                     smoothed_cx = int(smoothed_cx * (1 - smoothing_factor) + cx * smoothing_factor)
 
-                cv2.circle(frame, (smoothed_cx, (y1 + y2)//2), 5, (0, 0, 255), -1)
+                if smoothed_cy is None:
+                    smoothed_cy = target_y
+                else:
+                    smoothed_cy = int(smoothed_cy * (1 - smoothing_factor) + target_y * smoothing_factor)
+
+                cv2.circle(frame, (smoothed_cx, smoothed_cy), 5, (0, 0, 255), -1)
 
                 # =============================
-                # DESIRED VELOCITY
+                # PAN VELOCITY (unchanged)
                 # =============================
                 err_x = smoothed_cx - CENTER_X
                 err_x = response_curve(err_x / FRAME_W)
-                desired_vel = err_x * MAX_PAN_SPEED
+                desired_pan_vel = err_x * MAX_PAN_SPEED
 
-                # =============================
-                # ACCELERATION / DECELERATION
-                # =============================
-                vel_diff = desired_vel - pan_vel_current
+                vel_diff = desired_pan_vel - pan_vel_current
                 max_change = PAN_ACCEL * dt
                 if abs(vel_diff) > max_change:
                     vel_diff = max_change if vel_diff > 0 else -max_change
@@ -151,8 +162,14 @@ while cap.isOpened():
                 pan_angle += pan_vel_current * dt
                 pan_angle = max(-PAN_LIMIT, min(PAN_LIMIT, pan_angle))
 
-                # tilt locked
-                tilt_angle = 0.0
+                # =============================
+                # STEP-BASED TILT
+                # =============================
+                tilt_error = CENTER_Y - smoothed_cy
+                if abs(tilt_error) > TILT_THRESHOLD:
+                    tilt_step = tilt_error / TILT_STEP_DIV
+                    tilt_angle += tilt_step
+                    tilt_angle = max(-TILT_LIMIT, min(TILT_LIMIT, tilt_angle))
 
             else:
                 color = (0, 255, 0)
@@ -166,6 +183,7 @@ while cap.isOpened():
     if has_active_target and not had_active_target:
         ser.write(b"3\n")
         print("TRACK ACQUIRED -> sent 3")
+        last_target_time = time.time()
     elif not has_active_target and had_active_target:
         ser.write(b"2\n")
         print("TRACK LOST -> sent 2")
@@ -179,10 +197,15 @@ while cap.isOpened():
         send_servo_command(pan_angle, tilt_angle)
         last_servo_send = now
 
+    if not has_active_target and time.time() - last_target_time >= timeout:
+        pan_angle = 0.0
+        tilt_angle = 0.0
+        pan_vel_current = 0.0
+        send_servo_command(pan_angle,tilt_angle)
     # =============================
     # DISPLAY
     # =============================
-    cv2.circle(frame, (CENTER_X, FRAME_H//2), 5, (255, 0, 0), 2)
+    cv2.circle(frame, (CENTER_X, CENTER_Y), 5, (255, 0, 0), 2)
     cv2.putText(frame, f"Pan: {pan_angle:+.1f}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
     cv2.putText(frame, f"Tilt: {tilt_angle:+.1f}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
     cv2.imshow("Turret Vision", frame)
