@@ -35,6 +35,9 @@ This is actually not my first time making this project. I built a 1.0 version la
     - The circuit is directly wired into the Nerf gun's circuitry, so no need for any kind of solenoids
 
 ## 🔍 Technical Details
+**Control Flow**
+
+![Control Flow Diagram](images/control_flow.png)
 
 **Autonomous Vision** 🤖
 
