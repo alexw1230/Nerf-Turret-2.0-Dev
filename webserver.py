@@ -1,26 +1,23 @@
+#Raspberry Pi Webserver
+#Hosts app and communicates with arduino
+
 from flask import Flask, render_template_string, jsonify
 import RPi.GPIO as GPIO
 import time
 
-# --------------------
-# GPIO setup
-# --------------------
-INPUT_PIN = 27     # reads state
-OUTPUT_PIN = 17    # controlled by button
+#Gpio config
+INPUT_PIN = 27
+OUTPUT_PIN = 17
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(INPUT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 GPIO.setup(OUTPUT_PIN, GPIO.OUT)
 GPIO.output(OUTPUT_PIN, GPIO.LOW)
 
-# --------------------
-# Flask setup
-# --------------------
+#Flask init
 app = Flask(__name__)
 
-# --------------------
-# HTML + JS
-# --------------------
+#Web interface (HTML & JS)
 HTML = """
 <!doctype html>
 <title>GPIO Control</title>
@@ -116,9 +113,7 @@ sliderVal.textContent = slider.value;
 let greenStart = null;
 let autoHolding = false;
 
-// ----------------------
-// Status polling
-// ----------------------
+
 function updateStatus() {
     fetch("/status")
         .then(r => r.json())
@@ -161,9 +156,6 @@ function updateStatus() {
 
 setInterval(updateStatus, 200);
 
-// ----------------------
-// Manual hold button
-// ----------------------
 btn.addEventListener("mousedown", () => {
     if (!toggle.checked) fetch("/on", {method: "POST"});
 });
@@ -174,7 +166,6 @@ btn.addEventListener("mouseleave", () => {
     if (!toggle.checked) fetch("/off", {method: "POST"});
 });
 
-// Touch support
 btn.addEventListener("touchstart", () => {
     if (!toggle.checked) fetch("/on", {method: "POST"});
 });
@@ -182,9 +173,7 @@ btn.addEventListener("touchend", () => {
     if (!toggle.checked) fetch("/off", {method: "POST"});
 });
 
-// ----------------------
-// Toggle + slider logic
-// ----------------------
+
 toggle.addEventListener("change", () => {
     slider.disabled = toggle.checked;
     greenStart = null;
@@ -201,9 +190,7 @@ slider.addEventListener("input", () => {
 </script>
 """
 
-# --------------------
-# Routes
-# --------------------
+#Flask routes
 @app.route("/")
 def index():
     return render_template_string(HTML)
@@ -223,12 +210,9 @@ def off():
     GPIO.output(OUTPUT_PIN, GPIO.LOW)
     return ("", 204)
 
-# --------------------
-# Run
-# --------------------
+#Entry point
 if __name__ == "__main__":
     try:
         app.run(host="0.0.0.0", port=5000)
     finally:
         GPIO.cleanup()
-

@@ -1,30 +1,28 @@
+//Turret servo & fire control
+
 #include <Servo.h>
 
+//Init servos
 Servo servoX;
 Servo servoY;
 
-// --------------------
-// PIN CONFIG
-// --------------------
+//Pin assign
 const int SERVO_X_PIN = 9;
 const int SERVO_Y_PIN = 10;
 
-const int RELAY_PIN        = 22;
-const int RELAY_INPUT_PIN  = 24;   // NEW INPUT PIN (override)
+const int RELAY_PIN = 22;
+const int RELAY_INPUT_PIN = 24;
 
-const int OUTPUT2_PIN      = 23;
+const int OUTPUT2_PIN = 23;
 
-// --------------------
-// SERVO LIMITS
-// --------------------
+//Servo limits
 const int SERVO_MIN = 0;
 const int SERVO_MAX = 180;
 
-// --------------------
-// STATE
-// --------------------
-bool relaySerialState = false;  // last serial command for relay
+//Relay state
+bool relaySerialState = false;
 
+//Setup serial, servos, outputs
 void setup() {
   Serial.begin(115200);
 
@@ -34,39 +32,34 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(OUTPUT2_PIN, OUTPUT);
 
-  pinMode(RELAY_INPUT_PIN, INPUT);  // use INPUT_PULLUP if needed
+  pinMode(RELAY_INPUT_PIN, INPUT);
 
   digitalWrite(RELAY_PIN, LOW);
   digitalWrite(OUTPUT2_PIN, LOW);
 
+  //Center servos
   servoX.write(90);
   servoY.write(90);
 
-  Serial.println("Ready");
 }
 
+//Main
 void loop() {
 
-  // --------------------
-  // SERIAL COMMANDS
-  // --------------------
-  if (Serial.available()) {
+  if (Serial.available()) { //Command handle
     String input = Serial.readStringUntil('\n');
     input.trim();
 
-    // Relay via serial (0 / 1)
-    if (input == "0" || input == "1") {
+    if (input == "0" || input == "1") { //Fire control
       relaySerialState = (input == "1");
       return;
     }
 
-    // Second output (2 / 3)
-    if (input == "2" || input == "3") {
+    if (input == "2" || input == "3") { //Tracking
       digitalWrite(OUTPUT2_PIN, input == "3" ? HIGH : LOW);
       return;
     }
-
-    // Servo command X,Y
+    //Servo movement parse
     int commaIndex = input.indexOf(',');
     if (commaIndex > 0) {
       int x = input.substring(0, commaIndex).toInt();
@@ -74,18 +67,15 @@ void loop() {
 
       x = constrain(x, SERVO_MIN, SERVO_MAX);
       y = constrain(y, SERVO_MIN, SERVO_MAX);
-
+      //Write to servo
       servoX.write(x);
       servoY.write(y);
     }
   }
 
-  // --------------------
-  // RELAY OVERRIDE LOGIC
-  // --------------------
+  //Fire override handling
   bool relayInputState = digitalRead(RELAY_INPUT_PIN);
 
-  // Relay ON if input pin HIGH OR serial says ON
   bool relayFinalState = relayInputState || relaySerialState;
 
   digitalWrite(RELAY_PIN, relayFinalState ? HIGH : LOW);

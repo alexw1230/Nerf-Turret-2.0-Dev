@@ -1,27 +1,35 @@
+#Manual control with standard Xbox controller
+
+
 import pygame
 import cv2
 import time
 import serial
 
-
+#Physical Limits (so the turret doesn't tear itself apart)
 PAN_LIMIT = 75.0
 TILT_LIMIT = 20.0
 DEADZONE = 0.1
 
+#Speed presets (can change) (deg/s)
 SPEED_SLOW = 45.0
 SPEED_MED  = 90.0
 SPEED_FAST = 180.0
 
+#Change if you have multiple cameras
 CAMERA_INDEX = 1
 
+#Serial params
 SERIAL_PORT = "COM3"
 BAUD_RATE = 115200
 
+#Controller map
 BTN_A = 0
 AXIS_RT = 5
 TRIGGER_THRESHOLD = 0.5
 HAT_INDEX = 0
 
+#Serial helpers
 def send_servo_command(ser, pan, tilt):
     x = int(round(pan + 90))
     y = int(round(tilt + 90))
@@ -30,15 +38,11 @@ def send_servo_command(ser, pan, tilt):
 def send_relay_command(ser, state):
     ser.write(f"{state}\n".encode("utf-8"))
 
-# =============================
-# HELPERS
-# =============================
+#Nonlinear joystick response (similar in nature to the auto curve)
 def apply_curve(x, expo=2):
     return x ** expo if x >= 0 else -((-x) ** expo)
 
-# =============================
-# INIT PYGAME
-# =============================
+#Pygame init
 pygame.init()
 pygame.joystick.init()
 
@@ -50,20 +54,17 @@ joystick.init()
 
 print(f"Controller connected: {joystick.get_name()}")
 
-# =============================
-# INIT SERIAL
-# =============================
+#Serial init
 ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
 time.sleep(2)
 print("Serial connected")
 
-# =============================
-# INIT CAMERA
-# =============================
+#Cam init
 cap = cv2.VideoCapture(CAMERA_INDEX)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
+#Display init
 cv2.namedWindow("Turret Manual Control", cv2.WINDOW_NORMAL)
 cv2.resizeWindow("Turret Manual Control", 1280, 720)
 cv2.moveWindow("Turret Manual Control", 1920, 0)
@@ -72,9 +73,8 @@ cv2.setWindowProperty(
     cv2.WND_PROP_FULLSCREEN,
     cv2.WINDOW_FULLSCREEN
 )
-# =============================
-# STATE
-# =============================
+
+#State vars
 pan_angle = 0.0
 tilt_angle = 0.0
 
@@ -86,9 +86,7 @@ prev_a = False
 firing = False
 prev_hat = (0, 0)
 
-# =============================
-# MAIN LOOP
-# =============================
+#Main
 while True:
     now = time.time()
     dt = now - last_time
@@ -96,9 +94,7 @@ while True:
 
     pygame.event.pump()
 
-    # =============================
-    # D-PAD SPEED CONTROL
-    # =============================
+    #Speed selector (D pad)
     hat = joystick.get_hat(HAT_INDEX)
 
     if hat != prev_hat:
@@ -114,43 +110,40 @@ while True:
 
     prev_hat = hat
 
-    # =============================
-    # STICKS
-    # =============================
+    #Stick inp
     stick_x = joystick.get_axis(0)
     stick_y = joystick.get_axis(1)
 
+    #Deadzone
     if abs(stick_x) < DEADZONE:
         stick_x = 0.0
     if abs(stick_y) < DEADZONE:
         stick_y = 0.0
-
+    
+    #Invert y (usability)
     stick_y = -stick_y
 
+    #Nonlinear response curves
     stick_x = apply_curve(stick_x)
     stick_y = apply_curve(stick_y)
-
+    
+    #Motion integration
     pan_angle  += stick_x * MAX_SPEED * dt
     tilt_angle += stick_y * MAX_SPEED * dt
 
     pan_angle  = max(-PAN_LIMIT,  min(PAN_LIMIT,  pan_angle))
     tilt_angle = max(-TILT_LIMIT, min(TILT_LIMIT, tilt_angle))
 
-    # =============================
-    # RECENTER
-    # =============================
+    #Recenter
     a_pressed = joystick.get_button(BTN_A)
     if a_pressed and not prev_a:
         pan_angle = 0.0
         tilt_angle = 0.0
         send_servo_command(ser, pan_angle, tilt_angle)
-        print("Recentered")
 
     prev_a = a_pressed
 
-    # =============================
-    # TRIGGER FIRE
-    # =============================
+    #Fire ctrl
     rt = joystick.get_axis(AXIS_RT)
     if rt < 0:
         rt = (rt + 1) / 2
@@ -158,26 +151,20 @@ while True:
     if rt > TRIGGER_THRESHOLD and not firing:
         firing = True
         send_relay_command(ser, 1)
-        print("FIRE")
 
     elif rt <= TRIGGER_THRESHOLD and firing:
         firing = False
         send_relay_command(ser, 0)
-        print("FIRE STOP")
 
-    # =============================
-    # SEND SERVO DATA
-    # =============================
+    #Update servos
     send_servo_command(ser, pan_angle, tilt_angle)
 
-    # =============================
-    # CAMERA
-    # =============================
+    #Camera
     ret, frame = cap.read()
     if not ret:
         print("Camera read failed")
         break
-
+    #Overlay
     cv2.putText(frame, f"Pan: {pan_angle:+.1f}",
                 (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     cv2.putText(frame, f"Tilt: {tilt_angle:+.1f}",
@@ -190,12 +177,11 @@ while True:
 
     cv2.imshow("Turret Manual Control", frame)
 
+    #Quit
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
-# =============================
-# CLEANUP
-# =============================
+#Cleanup
 ser.close()
 cap.release()
 cv2.destroyAllWindows()
