@@ -6,7 +6,7 @@ Watch the Youtube video [here](https://www.youtube.com/@giraffelabs)!
 
 Built with Python, OpenCV, Pygame, [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics), Flask, Cloudflare, and Arduino
 
-!["Turret"](Nerf-Turret-2.0/images/full_mechanical.png)
+!["Turret"](images/full_mechanical.png)
 
 ## ℹ️ Overview
 
@@ -48,15 +48,15 @@ If you don't want the AI to control the aim, you can instead! This program uses 
 
 For the autonomous mode, the operator needs a way to fire. In order to accomplish this, I set up a webserver using Flask and Cloudflare on my Raspberry Pi 4 and wired it directly into the Arduino. For safety reasons, I did not want to give the AI program direct access to firing (bad idea lol). The app has a few features, the most prominent of which being the status indicator and the fire button. The status indicator is normally red and when the turret picks up a target, it will turn green. The fire button rather obviously fires the turret. Then, the checkbox and slider below that are for automatic mode. When it is selected, a positive tracking signal will start an internal timer. If the target is mantained that entire time without losing it, a fire signal will be sent until the target is lost. The slider controls the aforementioned delay time. Also note that when automatic mode is selected, the indicator color is a bit different. Red is still the default, followed by yellow when a target is acquired, and green when firing begins.
 
-!["App Interface"](Nerf-Turret-2.0/images/app.png)
+!["App Interface"](images/app.png)
 
 **Hardware Interface**
 
 All commands from the Raspberry Pi and Laptop all run through the Arduino. The Arduino simply parses the serial and binary commands and converts that into tracking signal, firing signal, and servo positions. I am currently running it on 115200 baud async serial.
 
-!["Electrial Schematic"](Nerf-Turret-2.0/images/schematic.png)
-!["Wires"](Nerf-Turret-2.0/images/wireview.png)
-!["Electronics"](Nerf-Turret-2.0/images/electronics.png)
+!["Electrial Schematic"](images/schematic.png)
+!["Wires"](images/wireview.png)
+!["Electronics"](images/electronics.png)
 ### ✍️ Author
 
 My name is [Alexander Wiegand](https://github.com/alexw1230) and I am a sophomore Computer Engineering and AMS student at Stony Brook Honors College. My interests include machine learning, finance, robotics, mathematics, and more.
