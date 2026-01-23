@@ -3,9 +3,7 @@ import cv2
 import time
 import serial
 
-# =============================
-# CONFIG
-# =============================
+
 PAN_LIMIT = 75.0
 TILT_LIMIT = 20.0
 DEADZONE = 0.1
@@ -19,15 +17,11 @@ CAMERA_INDEX = 1
 SERIAL_PORT = "COM3"
 BAUD_RATE = 115200
 
-# Xbox mappings (Windows)
 BTN_A = 0
 AXIS_RT = 5
 TRIGGER_THRESHOLD = 0.5
 HAT_INDEX = 0
 
-# =============================
-# SERIAL SEND FUNCTIONS
-# =============================
 def send_servo_command(ser, pan, tilt):
     x = int(round(pan + 90))
     y = int(round(tilt + 90))
@@ -72,7 +66,12 @@ cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
 cv2.namedWindow("Turret Manual Control", cv2.WINDOW_NORMAL)
 cv2.resizeWindow("Turret Manual Control", 1280, 720)
-
+cv2.moveWindow("Turret Manual Control", 1920, 0)
+cv2.setWindowProperty(
+    "Turret Manual Control",
+    cv2.WND_PROP_FULLSCREEN,
+    cv2.WINDOW_FULLSCREEN
+)
 # =============================
 # STATE
 # =============================

@@ -35,7 +35,7 @@ PAN_ACCEL = 2000.0
 # TILT CONFIG (PAN-LIKE)
 TILT_LIMIT = 20.0
 MAX_TILT_SPEED = 180.0
-TILT_ACCEL = 1500.0
+TILT_ACCEL = 2000.0
 
 SERVO_SEND_INTERVAL = 0.02
 last_servo_send = 0
@@ -74,7 +74,7 @@ last_time = time.time()
 # =============================
 # SMOOTHING
 # =============================
-smoothing_factor = 0.7
+smoothing_factor = 0.9
 smoothed_cx = None
 smoothed_cy = None
 
@@ -86,7 +86,7 @@ def send_servo_command(pan, tilt):
     y = int(round(tilt + 90))
     ser.write(f"{x},{y}\n".encode())
 
-def response_curve(x, expo=1.6):
+def response_curve(x, expo=1.35):
     return x ** expo if x >= 0 else -((-x) ** expo)
 
 # =============================
